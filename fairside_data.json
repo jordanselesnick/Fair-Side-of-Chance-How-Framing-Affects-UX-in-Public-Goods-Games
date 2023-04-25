@@ -1,0 +1,87 @@
+{
+  "contributors": [
+    {
+      "contributorName": "Open Science Framework",
+      "contributorType": "HostingInstitution",
+      "name": "Open Science Framework",
+      "nameIdentifiers": [
+        {
+          "name": "Open Science Framework",
+          "nameIdentifier": "https://ror.org/05d5mza29",
+          "nameIdentifierScheme": "ROR"
+        },
+        {
+          "name": "Open Science Framework",
+          "nameIdentifier": "https://grid.ac/institutes/grid.466501.0/",
+          "nameIdentifierScheme": "GRID"
+        }
+      ],
+      "nameType": "Organizational"
+    }
+  ],
+  "creators": [
+    {
+      "affiliation": [],
+      "name": "Andrew Cullen",
+      "nameIdentifiers": [
+        {
+          "nameIdentifier": "http://orcid.org/0000-0002-6334-8800",
+          "nameIdentifierScheme": "URL"
+        },
+        {
+          "nameIdentifier": "https://osf.io/axbkh",
+          "nameIdentifierScheme": "URL"
+        },
+        {
+          "nameIdentifier": "https://orcid.org/0000-0002-6334-8800",
+          "nameIdentifierScheme": "ORCID",
+          "schemeURI": "https://orcid.org/"
+        }
+      ],
+      "nameType": "Personal"
+    }
+  ],
+  "dates": [
+    {
+      "date": "2022-04-27",
+      "dateType": "Created"
+    },
+    {
+      "date": "2022-04-27",
+      "dateType": "Updated"
+    }
+  ],
+  "descriptions": [],
+  "fundingReferences": [],
+  "identifiers": [
+    {
+      "identifier": "",
+      "identifierType": "DOI"
+    },
+    {
+      "identifier": "https://osf.io/nwjt8",
+      "identifierType": "URL"
+    }
+  ],
+  "publicationYear": "2022",
+  "publisher": "Open Science Framework",
+  "relatedIdentifiers": [
+    {
+      "relatedIdentifier": "https://osf.io/n25u6",
+      "relatedIdentifierType": "URL",
+      "relationType": "IsPartOf"
+    }
+  ],
+  "rightsList": [],
+  "schemaVersion": "http://datacite.org/schema/kernel-4",
+  "subjects": [],
+  "titles": [
+    {
+      "title": "finaldatacollectionApril 15.sav"
+    }
+  ],
+  "types": {
+    "resourceType": "File",
+    "resourceTypeGeneral": "Text"
+  }
+}

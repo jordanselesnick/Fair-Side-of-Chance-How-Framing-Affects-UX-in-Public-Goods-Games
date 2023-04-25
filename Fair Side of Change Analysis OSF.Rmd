@@ -1,0 +1,750 @@
+---
+title: "The Fair Side of Chance: How Uncertainty, Power and Fairness Impact Strategic Behavior"
+output: html_notebook
+---
+
+## Overview
+The following analysis was conducted as part of "BDS-588 by "Fair Side of Chance" experiment conducted by Andrew Cullen, Steven Jacobs and Jordan Selesnick.
+
+Data was collected on April 13, 2022 using mTurk.
+
+## Data Cleaning
+
+Below, we clean our data.
+
+### Read in data
+
+```{r}
+library(haven)
+library(tidyverse)
+library(rstatix)
+library(gt)
+library(sjPlot)
+library(ggpubr)
+library(ggplot2)
+library(lme4)
+
+rm(list=ls())
+data00 <- read_sav("finaldata_041522.sav")
+```
+
+### Remove participants
+
+Participants were removed based on the following criteria:
+
+* Did not finish
+* Failed attention checks
+* Failed bot check
+
+```{r}
+data01 <- data00 %>% 
+  filter(Attention_Check_2_1 == 4) %>% 
+  filter(!grepl('Warning:', timeOutLog)) %>%
+  select(!contains("Click")) %>% 
+  select(!contains("Submit")) #%>% 
+ # select(Duration__in_seconds_, ResponseId, cont1:cont8,
+  #       cont1.0:cont8.0, Fairness_1__1:Comments, studyID, groupID,
+  #       participantRole, timeOutLog, totalPayoff, ownContribution1,
+  #       a1, b1, sum1, share1:payoff8)
+```
+
+### Rename Vars
+
+Simple transforming of variables to more managable output.
+
+```{r}
+data02 <- data01 %>%
+  select(ResponseId, cont1.0:cont8.0) %>% 
+  rename(cont1 = cont1.0,
+         cont2 = cont2.0,
+         cont3 = cont3.0,
+         cont4 = cont4.0,
+         cont5 = cont5.0,
+         cont6 = cont6.0,
+         cont7 = cont7.0,
+         cont8 = cont8.0) %>% 
+  filter(!is.na(cont1))
+
+data02_02 <- data01 %>%
+  select(ResponseId, cont1.1:cont8.1) %>% 
+  rename(cont1 = cont1.1,
+         cont2 = cont2.1,
+         cont3 = cont3.1,
+         cont4 = cont4.1,
+         cont5 = cont5.1,
+         cont6 = cont6.1,
+         cont7 = cont7.1,
+         cont8 = cont8.1) %>% 
+  filter(!is.na(cont1))
+
+data02_03 <- data01 %>%
+  select(ResponseId, cont1.2:cont8.2) %>% 
+  rename(cont1 = cont1.2,
+         cont2 = cont2.2,
+         cont3 = cont3.2,
+         cont4 = cont4.2,
+         cont5 = cont5.2,
+         cont6 = cont6.2,
+         cont7 = cont7.2,
+         cont8 = cont8.2) %>% 
+  filter(!is.na(cont1))
+
+data02_04 <- data01 %>%
+  select(ResponseId, cont1.3:cont8.3) %>% 
+  rename(cont1 = cont1.3,
+         cont2 = cont2.3,
+         cont3 = cont3.3,
+         cont4 = cont4.3,
+         cont5 = cont5.3,
+         cont6 = cont6.3,
+         cont7 = cont7.3,
+         cont8 = cont8.3) %>% 
+  filter(!is.na(cont1))
+
+data03 <- data01 %>%
+  select(ResponseId, cont1:cont8) %>% 
+  filter(!is.na(cont1))
+
+data04 <- data02 %>% bind_rows(data02_02, data02_03, data02_04, data03)
+
+data05 <- data01 %>%
+  select(!(cont1:cont8)) %>% 
+  select(!(cont1.0:cont8.0))  %>% 
+  select(!(cont1.1:cont8.1)) %>% 
+  select(!(cont1.2:cont8.2)) %>% 
+  select(!(cont1.3:cont8.3)) %>% 
+  left_join(data04, by = "ResponseId")  %>% 
+  mutate(studyID = ifelse(is.na(studyID), 0, studyID)) %>% 
+  mutate(studyID = ifelse(!is.na(Control_Statement), "Control", studyID))
+
+#renaming "control" to ctrl // make distinct
+data05 <- data05 %>% rename( ctrl_statement = Control_Statement)
+```
+### New Var: DVs
+
+Create variables for mean and total contribution rate over all 8 rounds.
+
+```{r}
+      data05 <- data05 %>% 
+        rowwise() %>% 
+        mutate(mean_cont = mean(c_across(starts_with("cont")))) %>% 
+        mutate(sum_cont = sum(c_across(starts_with("cont"))))
+```
+
+### New Var: Experimental vs. Control
+
+Create variables that describe whether a respondent was in a control or experimental condition. This will be used in our H1 analysis later on.
+
+```{r}
+ data05 <- data05 %>% 
+       mutate(ctrlvsexp = case_when(
+        studyID == "PT PGG Equal Agent" ~ "experimental",
+        studyID == "PT PGG Equal Systemic" ~ "experimental",
+        studyID == "PT PGG Unequal Systemic" ~ "experimental",
+        studyID == "PT PGG Unequal Agent" ~ "experimental",
+        studyID == "Control" ~ 'control'))
+
+ data05 <- data05 %>% 
+       mutate(treatments = case_when(
+        studyID == "PT PGG Equal Agent" ~ "equal_agent",
+        studyID == "PT PGG Equal Systemic" ~ "eaual_systemic",
+        studyID == "PT PGG Unequal Systemic" ~ "unequal_systemic",
+        studyID == "PT PGG Unequal Agent" ~ "unequal_agent",
+        studyID == "Control" ~ 'control'))
+```
+
+### New Var: Equal vs. Unequal
+
+Create variables that describe whether a respondent was in an equal or unequal condition. This will be used in our H2 analysis later on.
+
+```{r}
+      data05 <- data05 %>% 
+       mutate(treat_parity = case_when(
+         studyID == "PT PGG Equal Agent" ~ "equal",
+         studyID == "PT PGG Equal Systemic" ~ "equal",
+         studyID == "PT PGG Unequal Systemic" ~ "unequal",
+         studyID == "PT PGG Unequal Agent" ~ "unequal",
+         studyID == "Control" ~ 'control'))
+```
+
+### New Var: Systemic vs. Agent
+
+Create variables that describe whether a respondent was in an Systemic or Agent condition. This will be used in our H3 analysis later on.
+
+```{r}
+      data05 <- data05 %>% 
+       mutate(treat_power = case_when(
+         studyID == "PT PGG Equal Agent" ~ "agent",
+         studyID == "PT PGG Equal Systemic" ~ "systemic",
+         studyID == "PT PGG Unequal Systemic" ~ "systemic",
+         studyID == "PT PGG Unequal Agent" ~ "agent",
+         studyID == "Control" ~ 'control'))
+```
+
+### New Var: Favored Groups
+
+In the Unequal conditions, there were two roles: favored (saw multiplier) or unfavored (did not see multiplier). We create a new variable to split out those two experiences.
+
+```{r}
+      data_full <- data05 %>% 
+       mutate(treat_alt = case_when(
+         studyID == "PT PGG Equal Agent" ~ "equal_agent",
+         studyID == "PT PGG Equal Systemic" ~ "equal_systemic",
+         studyID == "PT PGG Unequal Systemic" & Favor_Reveal.0 == 1 ~ "unequal_systemic_certain",
+         studyID == "PT PGG Unequal Systemic" & Unfavor_Reveal == 1 ~ "unequal_systemic_unfavor",
+         studyID == "PT PGG Unequal Agent" & Favor_Reveal == 4  ~ "unequal_agent_certain",
+         studyID == "PT PGG Unequal Agent" & Unfavor_Reveal_ == 4 ~ "unequal_agent_unfavor",
+         studyID == "Control" ~ "control"))
+
+```
+
+### Subset data
+
+Create subset dataset without pariticipants in "favored" version of Unequal conditions.
+
+```{r}
+     data_subset <- filter(data_full,
+                           !treat_alt %in% c("unequal_agent_certain",
+                                             "unequal_systemic_certain"))
+```
+### Naming
+```{r}
+ data_subset <- data_subset %>% 
+       mutate(treat_formal = case_when(
+        studyID == "PT PGG Equal Agent" ~ "Equal Agent",
+        studyID == "PT PGG Equal Systemic" ~ "Equal Systemic",
+        studyID == "PT PGG Unequal Systemic" ~ "Unequal Systemic",
+        studyID == "PT PGG Unequal Agent" ~ "Unequal Agent",
+        studyID == "Control" ~ 'Control'))
+```
+
+# Results
+
+### Fig 2A: Boxplots for all conditions
+
+```{r}
+
+data_subset %>%
+      ggplot(
+      aes(x = as.factor(treat_formal),
+      y = as.numeric(mean_cont))) +
+      geom_boxplot() +
+        xlab("Treatment Group") +
+      ylab("Mean Contribution")+
+      theme_classic() +
+      geom_jitter(alpha = 0.3, width = .1)+
+      stat_compare_means(label.x = 1.8, label.y = 22)+
+      stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+             linetype="solid", size=1, color="red")
+
+
+```
+
+### Fig 2B. Sumarry statistics
+
+```{r}
+     
+#stats
+
+      sum_subset <- data_subset %>%                       
+        group_by(treat_formal) %>% 
+        summarize(
+          count = n(),
+          median = median(mean_cont),
+          mean = mean(mean_cont),
+          sd = sd(mean_cont))
+
+
+#table
+ stats_table <- sum_subset %>% 
+        gt() %>% 
+        tab_header(
+          title = "Summary Statistics",
+          subtitle = "Fair Side of Chance"
+        ) %>% 
+        fmt_number(
+          columns = 2:5,
+          decimals = 1,
+          use_seps = FALSE) %>% 
+      cols_label(
+        treat_formal = md("**Condition**"),
+        count = md("**Count**"),
+        median = md("**Median**"),
+        mean = md("**Mean**"),
+        sd = md("**SD**")
+        ) %>% 
+      cols_align(
+        align = "center",
+        columns = everything())
+ 
+ print(stats_table)
+```
+
+### Fig 3A: Parity Boxplot
+
+```{r}
+  data_subset %>%
+        filter(treat_parity != "control") %>% 
+        ggplot(
+        aes(x = as.factor(treat_parity),
+        y = as.numeric(mean_cont))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Mean Contribution")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+```
+### Fig 3B: Power Boxplot
+
+```{r}
+  data_subset %>%
+        filter(treat_parity != "control") %>% 
+        ggplot(
+        aes(x = as.factor(treat_power),
+        y = as.numeric(mean_cont))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Mean Contribution")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+```
+### Fig 3: Fairness Regression
+
+```{r}
+
+summary(lm(mean_cont ~ treat_formal + Fairness_1__1 + Fairness_2_1 + Fairness_3_1, data = data_subset))
+
+fairness_reg <- lm(mean_cont ~ treat_formal + Fairness_1__1 + Fairness_2_1 + Fairness_3_1, data = data_subset)
+
+plot_models(fairness_reg,
+            rm.terms = c("treat_formalEqual Agent","treat_formalEqual Systemic","treat_formalUnequal Agent","treat_formalUnequal Systemic"),
+            axis.labels = c("How multiplier was determined impacted fairness","Fairness Impacted contribution","Rules of the game were fair"),
+            m.labels = c("Mean Contributions"),
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+
+plot_models(fairness_reg,
+            axis.labels = c("Q: How multiplier was determined impacted fairness","Q: Fairness Impacted contribution","Q: Rules of the game were fair","T: UnequalSystemic","T: Unequal Agent","T: Equal Systemic","T: Equal Agent"),
+            m.labels = c("Mean Contributions"),
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+
+ #axis.labels = c("Equal Agent","Equal Systemic","Unequal Agent","Unequal Systemic","Rules of the game were fair","Fairness Impacted contribution","How multiplier was determined impacted fairness"),
+```
+
+### Fig 4: Fairness scores
+
+```{r}
+
+# How fair were the rules of the game?
+  data_subset %>%
+        ggplot(
+        aes(x = as.factor(treat_formal),
+        y = as.numeric(Fairness_1__1))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Perceived Fairness of Game")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+
+pairwise.wilcox.test(data_subset$Fairness_1__1, data_subset$treat_formal,
+                          p.adjust.method="holm")
+
+pairwise.wilcox.test(data_subset$Fairness_2_1, data_subset$treat_formal,
+                          p.adjust.method="holm")
+
+# How much did fairness impact decision making?
+
+  data_subset %>%
+        ggplot(
+        aes(x = as.factor(treat_formal),
+        y = as.numeric(Fairness_2_1))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Impact of Fairness on Cont Rate")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+
+pairwise.wilcox.test(data_subset$Fairness_1__1, data_subset$treat_formal,
+                          p.adjust.method="holm")
+
+pairwise.wilcox.test(data_subset$Fairness_2_1, data_subset$treat_formal,
+                          p.adjust.method="holm")
+
+```
+
+
+    
+### Fig 5: Panel Regression Analysis
+
+```{r}
+# Creating long dataset
+
+  data_long_subset <- data_subset %>% 
+    pivot_longer(cols = c(cont1:cont8, ownContribution1, a1:sum1, share1:payoff8),
+                 names_to = c(".value", "round"),
+                 names_pattern = "(\\w+)(.)") 
+
+# Adding the multiplier
+
+ data_long_subset <- data_long_subset %>% 
+     mutate(real_multilpier = case_when(
+      round == 1 ~ '1.5',
+      round == 2 ~ '5.15',
+      round == 3 ~ '.21',
+      round == 4 ~ '1.41',
+      round == 5 ~ '1.55',
+      round == 6 ~ '.48',
+      round == 7 ~ '.56',
+      round == 8 ~ '1.47',
+     ))
+   
+  data_long_subset <- data_long_subset %>% 
+     mutate(multilpier_last = case_when(
+      round == 2 ~ '1.5',
+      round == 3 ~ '5.15',
+      round == 4 ~ '.21',
+      round == 5 ~ '1.41',
+      round == 6 ~ '1.55',
+      round == 7 ~ '.48',
+      round == 8 ~ '.56',
+     ))
+  
+  #Creating partner contribution variable 
+  
+    data_long_subset <- data_long_subset %>% 
+      mutate(partner_contribution = as.numeric(sum) - as.numeric(ownContribution))       
+   
+    data_long_subset <- data_long_subset %>% 
+      group_by(ResponseId) %>%
+      mutate(cont_partner_last = lag(partner_contribution, n=1, order_by=round))
+      
+    data_long_subset <- data_long_subset %>% 
+      group_by(ResponseId) %>%
+      mutate(last_cont = lag(ownContribution, n=1, order_by=round))
+
+  #standarizing variables
+
+  data_long_subset <- data_long_subset %>% 
+   mutate(multiplier_std = (as.numeric(real_multilpier) /5.15)*20)  
+  
+  data_long_subset <- data_long_subset %>% 
+    mutate(multiplier_last_std = (as.numeric(multilpier_last) /5.15)*20)
+  
+  #Creating experimental vs. control datasets
+  
+  data_long_subset_ctrl <- data_long_subset %>% filter(ctrlvsexp == "control")
+    data_long_subset_exp <- data_long_subset %>% filter(ctrlvsexp == "experimental")
+
+
+##Regression model
+
+model_ctrl <- lmer(formula = as.numeric(ownContribution) ~ as.numeric(cont_partner_last) +  as.numeric(multiplier_std) + as.numeric(multiplier_last_std) + as.numeric(round) + (1|ResponseId), data = data_long_subset_ctrl)
+ model_exp <- lmer(formula = as.numeric(ownContribution) ~  as.numeric(cont_partner_last) + as.numeric(multiplier_last_std) + as.numeric(round) + (1|ResponseId), data = data_long_subset_exp)
+ 
+# Plotting regression models
+plot_models(model_ctrl,
+  rm.terms = c("as.numeric(multiplier_last_std)"),
+  axis.labels = c("Round","Multiplier (Current)", "Partner Contribution (Last)"),         
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+ 
+  
+ plot_models(model_exp,
+  axis.labels = c("Round","Multiplier (Last)", "Partner Contribution (Last)"),         
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+ 
+ #Round by round plot
+ 
+   data_long_subset %>% 
+    ggplot(aes(x = as.numeric(round), y = as.numeric(cont), color = as.factor(studyID))) +
+    geom_smooth(method = "loess", se = F) +
+    xlab("Round") +
+    ylab("Average Contribution") +
+    labs(fill = "Condition")+
+    scale_shape_manual(values = c("Control" = "grey85",
+                                  "PT PGG Equal Agent" = "deepskyblue1",
+                                  "PT PGG Equal Systemic"= "deepskyblue3",
+                                  "PT PGG Unequal Agent" = "green1",
+                                  "PT PGG Unequal Systemic" = "green3")) + theme_classic()
+```
+# RESULTS FROM FULL DATASET 
+
+### Naming
+```{r}
+ data_full <- data_full %>% 
+       mutate(treat_formal = case_when(
+        studyID == "PT PGG Equal Agent" ~ "Equal Agent",
+        studyID == "PT PGG Equal Systemic" ~ "Equal Systemic",
+        studyID == "PT PGG Unequal Systemic" ~ "Unequal Systemic",
+        studyID == "PT PGG Unequal Agent" ~ "Unequal Agent",
+        studyID == "Control" ~ 'Control'))
+```
+
+
+### Fig 2A: Boxplots for all conditions
+
+```{r}
+
+data_full %>%
+      ggplot(
+      aes(x = as.factor(treat_formal),
+      y = as.numeric(mean_cont))) +
+      geom_boxplot() +
+        xlab("Treatment Group") +
+      ylab("Mean Contribution")+
+      theme_classic() +
+      geom_jitter(alpha = 0.3, width = .1)+
+      stat_compare_means(label.x = 1.8, label.y = 22)+
+      stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+             linetype="solid", size=1, color="red")
+
+
+```
+
+### Fig 2B. Sumarry statistics
+
+```{r}
+     
+#stats
+
+      sum_full <- data_full %>%                       
+        group_by(treat_formal) %>% 
+        summarize(
+          count = n(),
+          median = median(mean_cont),
+          mean = mean(mean_cont),
+          sd = sd(mean_cont))
+
+
+#table
+ stats_table <- sum_full %>% 
+        gt() %>% 
+        tab_header(
+          title = "Summary Statistics",
+          subtitle = "Fair Side of Chance"
+        ) %>% 
+        fmt_number(
+          columns = 2:5,
+          decimals = 1,
+          use_seps = FALSE) %>% 
+      cols_label(
+        treat_formal = md("**Condition**"),
+        count = md("**Count**"),
+        median = md("**Median**"),
+        mean = md("**Mean**"),
+        sd = md("**SD**")
+        ) %>% 
+      cols_align(
+        align = "center",
+        columns = everything())
+ 
+ print(stats_table)
+```
+
+### Fig 3A: Parity Boxplot
+
+```{r}
+  data_full %>%
+        filter(treat_parity != "control") %>% 
+        ggplot(
+        aes(x = as.factor(treat_parity),
+        y = as.numeric(mean_cont))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Mean Contribution")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+```
+### Fig 3B: Power Boxplot
+
+```{r}
+  data_full %>%
+        filter(treat_parity != "control") %>% 
+        ggplot(
+        aes(x = as.factor(treat_power),
+        y = as.numeric(mean_cont))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Mean Contribution")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+```
+### Fig 3: Fairness Regression
+
+```{r}
+
+summary(lm(mean_cont ~ treat_formal + Fairness_1__1 + Fairness_2_1 + Fairness_3_1, data = data_full))
+
+fairness_reg <- lm(mean_cont ~ treat_formal + Fairness_1__1 + Fairness_2_1 + Fairness_3_1, data = data_full)
+
+plot_models(fairness_reg,
+            rm.terms = c("treat_formalEqual Agent","treat_formalEqual Systemic","treat_formalUnequal Agent","treat_formalUnequal Systemic"),
+            axis.labels = c("How multiplier was determined impacted fairness","Fairness Impacted contribution","Rules of the game were fair"),
+            m.labels = c("Mean Contributions"),
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+
+plot_models(fairness_reg,
+            axis.labels = c("Q: How multiplier was determined impacted fairness","Q: Fairness Impacted contribution","Q: Rules of the game were fair","T: UnequalSystemic","T: Unequal Agent","T: Equal Systemic","T: Equal Agent"),
+            m.labels = c("Mean Contributions"),
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+
+ #axis.labels = c("Equal Agent","Equal Systemic","Unequal Agent","Unequal Systemic","Rules of the game were fair","Fairness Impacted contribution","How multiplier was determined impacted fairness"),
+```
+
+### Fig 4: Fairness scores
+
+```{r}
+
+# How fair were the rules of the game?
+  data_full %>%
+        ggplot(
+        aes(x = as.factor(treat_formal),
+        y = as.numeric(Fairness_1__1))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Perceived Fairness of Game")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+
+pairwise.wilcox.test(data_full$Fairness_1__1, data_full$treat_formal,
+                          p.adjust.method="holm")
+
+pairwise.wilcox.test(data_full$Fairness_2_1, data_full$treat_formal,
+                          p.adjust.method="holm")
+
+# How much did fairness impact decision making?
+
+  data_full %>%
+        ggplot(
+        aes(x = as.factor(treat_formal),
+        y = as.numeric(Fairness_2_1))) +
+        geom_boxplot() +
+          xlab("Treatment Group") +
+        ylab("Impact of Fairness on Cont Rate")+
+        theme_classic() +
+        geom_jitter(alpha = 0.3, width = .1)+
+          stat_summary(fun=mean, geom="errorbar", aes(ymax=..y..,ymin=..y..),
+               linetype="solid", size=1, color="red")
+
+pairwise.wilcox.test(data_full$Fairness_1__1, data_full$treat_formal,
+                          p.adjust.method="holm")
+
+pairwise.wilcox.test(data_full$Fairness_2_1, data_full$treat_formal,
+                          p.adjust.method="holm")
+
+```
+
+
+    
+### Fig 5: Panel Regression Analysis
+
+```{r}
+# Creating long dataset
+
+  data_long_full <- data_full %>% 
+    pivot_longer(cols = c(cont1:cont8, ownContribution1, a1:sum1, share1:payoff8),
+                 names_to = c(".value", "round"),
+                 names_pattern = "(\\w+)(.)") 
+
+# Adding the multiplier
+
+ data_long_full <- data_long_full %>% 
+     mutate(real_multilpier = case_when(
+      round == 1 ~ '1.5',
+      round == 2 ~ '5.15',
+      round == 3 ~ '.21',
+      round == 4 ~ '1.41',
+      round == 5 ~ '1.55',
+      round == 6 ~ '.48',
+      round == 7 ~ '.56',
+      round == 8 ~ '1.47',
+     ))
+   
+  data_long_full <- data_long_full %>% 
+     mutate(multilpier_last = case_when(
+      round == 2 ~ '1.5',
+      round == 3 ~ '5.15',
+      round == 4 ~ '.21',
+      round == 5 ~ '1.41',
+      round == 6 ~ '1.55',
+      round == 7 ~ '.48',
+      round == 8 ~ '.56',
+     ))
+  
+  #Creating partner contribution variable 
+  
+    data_long_full <- data_long_full %>% 
+      mutate(partner_contribution = as.numeric(sum) - as.numeric(ownContribution))       
+   
+    data_long_full <- data_long_full %>% 
+      group_by(ResponseId) %>%
+      mutate(cont_partner_last = lag(partner_contribution, n=1, order_by=round))
+      
+    data_long_full <- data_long_full %>% 
+      group_by(ResponseId) %>%
+      mutate(last_cont = lag(ownContribution, n=1, order_by=round))
+
+  #standarizing variables
+
+  data_long_full <- data_long_full %>% 
+   mutate(multiplier_std = (as.numeric(real_multilpier) /5.15)*20)  
+  
+  data_long_full <- data_long_full %>% 
+    mutate(multiplier_last_std = (as.numeric(multilpier_last) /5.15)*20)
+  
+  #Creating experimental vs. control datasets
+  
+  data_long_full_ctrl <- data_long_full %>% filter(ctrlvsexp == "control")
+    data_long_full_exp <- data_long_full %>% filter(ctrlvsexp == "experimental")
+
+
+##Regression model
+
+model_ctrl <- lmer(formula = as.numeric(ownContribution) ~ as.numeric(cont_partner_last) +  as.numeric(multiplier_std) + as.numeric(multiplier_last_std) + as.numeric(round) + (1|ResponseId), data = data_long_full_ctrl)
+ model_exp <- lmer(formula = as.numeric(ownContribution) ~  as.numeric(cont_partner_last) + as.numeric(multiplier_last_std) + as.numeric(round) + (1|ResponseId), data = data_long_full_exp)
+ 
+# Plotting regression models
+plot_models(model_ctrl,
+  rm.terms = c("as.numeric(multiplier_last_std)"),
+  axis.labels = c("Round","Multiplier (Current)", "Partner Contribution (Last)"),         
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+ 
+  
+ plot_models(model_exp,
+  axis.labels = c("Round","Multiplier (Last)", "Partner Contribution (Last)"),         
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE)+
+  theme_cleveland()
+ 
+ #Round by round plot
+ 
+   data_long_full %>% 
+    ggplot(aes(x = as.numeric(round), y = as.numeric(cont), color = as.factor(studyID))) +
+    geom_smooth(method = "loess", se = F) +
+    xlab("Round") +
+    ylab("Average Contribution") +
+    labs(fill = "Condition")+
+    ggtitle("Contribution Per Round by Condition: Subset")+
+    scale_shape_manual(values = c("Control" = "grey85",
+                                  "PT PGG Equal Agent" = "deepskyblue1",
+                                  "PT PGG Equal Systemic"= "deepskyblue3",
+                                  "PT PGG Unequal Agent" = "green1",
+                                  "PT PGG Unequal Systemic" = "green3")) + theme_classic()
